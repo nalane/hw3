@@ -1,4 +1,3 @@
-mod point;
 mod dataset;
 
 use crate::dataset::{Dataset, read_dataset};

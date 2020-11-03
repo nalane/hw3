@@ -5,16 +5,14 @@ use std::collections::HashMap;
 
 use lzma::reader::LzmaReader;
 
-use crate::point::Point;
-
 #[derive(Debug)]
 pub struct Dataset {
-    features: Vec<Point>,
-    labels: Vec<usize>
+    pub features: Vec<Vec<f64>>,
+    pub labels: Vec<usize>
 }
 
 impl Dataset {
-    pub fn new(features: Vec<Point>, labels: Vec<usize>) -> Dataset {
+    pub fn new(features: Vec<Vec<f64>>, labels: Vec<usize>) -> Dataset {
         Dataset {
             features,
             labels
@@ -44,13 +42,12 @@ pub fn read_dataset(features_file: &str, labels_file: &str) -> Result<Dataset, B
     let features = raw_features.split_whitespace()
         .skip(1)
         .map(|x| {
-            let coords = x.split(',')
+            x.split(',')
                 .skip(1)
                 .map(|s| s.parse::<f64>().map_err(|e| e.into()))
-                .collect::<Result<_, Box<dyn Error>>>()?;
-            Ok(Point::new(coords))
+                .collect::<Result<_, Box<dyn Error>>>()
         })
-        .collect::<Result<Vec<Point>, Box<dyn Error>>>()?;
+        .collect::<Result<Vec<Vec<f64>>, Box<dyn Error>>>()?;
 
     // Read in the labels
     let raw_labels = unpack_xz(labels_file)?;
