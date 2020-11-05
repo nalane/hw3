@@ -8,14 +8,16 @@ use lzma::reader::LzmaReader;
 #[derive(Debug)]
 pub struct Dataset {
     pub features: Vec<Vec<f64>>,
-    pub labels: Vec<usize>
+    pub labels: Vec<usize>,
+    pub label_mapping: HashMap<usize, String>
 }
 
 impl Dataset {
-    pub fn new(features: Vec<Vec<f64>>, labels: Vec<usize>) -> Dataset {
+    pub fn new(features: Vec<Vec<f64>>, labels: Vec<usize>, label_mapping: HashMap<usize, String>) -> Dataset {
         Dataset {
             features,
-            labels
+            labels,
+            label_mapping
         }
     }
 }
@@ -61,13 +63,16 @@ pub fn read_dataset(features_file: &str, labels_file: &str) -> Result<Dataset, B
             let label = x.split(',').skip(1).next()?;
             if label_mapping.get(label) == None {
                 let num = label_mapping.len();
-                label_mapping.insert(label, num);
+                label_mapping.insert(label.to_string(), num);
             }
             let res = label_mapping.get(label)?;
             Some(*res)
         })
         .collect::<Option<Vec<usize>>>()
         .unwrap();
-
-    Ok(Dataset::new(features, labels))
+    
+    let label_mapping = label_mapping.iter()
+        .map(|(s, &n)| (n, s.clone()))
+        .collect();
+    Ok(Dataset::new(features, labels, label_mapping))
 }
