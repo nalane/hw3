@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::Read;
+use std::io::{BufRead, BufReader};
 use std::error::Error;
 use std::collections::HashMap;
 
@@ -40,16 +40,12 @@ impl Dataset {
 }
 
 // Reads in the compressed data file
-fn unpack_xz(filename: &str) -> Result<String, Box<dyn Error>> {
+fn unpack_xz(filename: &str) -> Result<BufReader<LzmaReader<File>>, Box<dyn Error>> {
     // Open the file
     let file = File::open(filename)?;
-    let mut decompress = LzmaReader::new_decompressor(file)?;
+    let decompress = LzmaReader::new_decompressor(file)?;
 
-    // Decompress the file
-    let mut buffer = String::new();
-    decompress.read_to_string(&mut buffer)?;
-
-    Ok(buffer)
+    Ok(BufReader::new(decompress))
 }
 
 pub fn read_dataset(features_file: &str, labels_file: &str) -> Result<Dataset, Box<dyn Error>> {
@@ -58,10 +54,11 @@ pub fn read_dataset(features_file: &str, labels_file: &str) -> Result<Dataset, B
     
     // Parse the data; split on whitespace, and for every
     // line, split by commas and map each item to a Point
-    let features = raw_features.split_whitespace()
+    let features = raw_features.lines()
         .skip(1)
-        .map(|x| {
-            x.split(',')
+        .map(|line| {
+            let l = line?;
+            l.split(',')
                 .skip(1)
                 .map(|s| s.parse::<f64>().map_err(|e| e.into()))
                 .collect::<Result<_, Box<dyn Error>>>()
@@ -74,10 +71,11 @@ pub fn read_dataset(features_file: &str, labels_file: &str) -> Result<Dataset, B
     // Parse the data; split on whitespace, and for every
     // line, split by commas and map each label to an integer
     let mut label_mapping = HashMap::new();
-    let labels = raw_labels.split_whitespace()
+    let labels = raw_labels.lines()
         .skip(1)
-        .map(|x| {
-            let label = x.split(',').nth(1)?;
+        .map(|line| {
+            let l = line.ok()?;
+            let label = l.split(',').nth(1)?;
             if label_mapping.get(label) == None {
                 let num = label_mapping.len();
                 label_mapping.insert(label.to_string(), num);
