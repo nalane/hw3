@@ -63,10 +63,15 @@ impl<'a> DecisionTree<'a> {
         num_max_class as f64 / self.active_rows.len() as f64
     }
 
+    // Given a feature vector, what is its label?
     pub fn predict(&self, x: &Vec<f64>) -> &str {
+        // Case where tree is a leaf; emit the associated class
         if let Some(c) = self.class {
             self.dataset.label_mapping.get(&c).unwrap().as_str()
-        } else {
+        }
+
+        // Case where it's a split. Evaluate and recurse down the tree
+        else {
             let (dim, val) = self.split.unwrap();
             if x[dim] < val {
                 self.y_tree.as_ref().unwrap().predict(x)
@@ -76,11 +81,14 @@ impl<'a> DecisionTree<'a> {
         }
     }
 
+    // Prints the tree
     pub fn print(&self) {
         self.print_worker(0);
     }
 
+    // Recursive function where level is how deep into the tree we are
     fn print_worker(&self, levels: usize) {
+        // Case where the tree is a leaf; just print the class
         if let Some(class) = self.class {
             for _ in 0..levels {
                 print!("\t");
@@ -88,6 +96,7 @@ impl<'a> DecisionTree<'a> {
             println!("Class: {}", self.dataset.label_mapping.get(&class).unwrap());
         }
 
+        // Case where the tree is an internal node; recursively print the two halves
         else {
             let (split_dim, split_val) = self.split.unwrap();
             for _ in 0..levels {

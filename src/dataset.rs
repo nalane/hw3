@@ -13,6 +13,7 @@ pub struct Dataset {
 }
 
 impl Dataset {
+    // Generates a new dataset
     pub fn new(features: Vec<Vec<f64>>, labels: Vec<usize>, label_mapping: HashMap<usize, String>) -> Dataset {
         Dataset {
             features,
@@ -21,6 +22,7 @@ impl Dataset {
         }
     }
 
+    // Generate train/test indices for k-fold cross validation
     pub fn kfold<'a>(&'a self, k: usize, fold_num: usize) -> (Vec<usize>, Vec<usize>) {
         let mut train = Vec::new();
         let mut test = Vec::new();
@@ -85,7 +87,8 @@ pub fn read_dataset(features_file: &str, labels_file: &str) -> Result<Dataset, B
         })
         .collect::<Option<Vec<usize>>>()
         .unwrap();
-    
+
+    // Map each numerical class to its associated string
     let label_mapping = label_mapping.iter()
         .map(|(s, &n)| (n, s.clone()))
         .collect();
