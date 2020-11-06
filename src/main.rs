@@ -10,7 +10,7 @@ use crate::decision_tree::decision_tree;
 use crate::knn::k_nearest_neighbors;
 
 // Calculates the f score given a seriesr of true labels and predictions
-fn f_score<'a>(actual: &Vec<&'a str>, predicted: &Vec<&'a str>) -> BTreeMap<&'a str, f64> {
+fn f_score<'a>(actual: &[&'a str], predicted: &[&'a str]) -> BTreeMap<&'a str, f64> {
     // Count TP, FP, and FN for each class
     let mut true_pos: BTreeMap<&str, usize> = actual.iter().map(|&a| (a, 0)).collect();
     let mut false_pos: BTreeMap<&str, usize> = actual.iter().map(|&a| (a, 0)).collect();
@@ -105,7 +105,7 @@ fn main() {
         }
 
         // Identify the actual labels and the predictions
-        let actual = test.iter()
+        let actual: Vec<&str> = test.iter()
             .map(|&idx| dataset.label_mapping.get(&dataset.labels[idx]).unwrap().as_str())
             .collect();
         let (tree_preds, knn_preds): (Vec<_>, Vec<_>) = test.iter()

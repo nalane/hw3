@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use crate::dataset::Dataset;
 
 // Perform knn classification given a dataset and a test point
-pub fn k_nearest_neighbors<'a>(dataset: &'a Dataset, x: &Vec<f64>, k: usize) -> Option<&'a str> {
+pub fn k_nearest_neighbors<'a>(dataset: &'a Dataset, x: &[f64], k: usize) -> Option<&'a str> {
     // Get the distances from x to each point in the dataset
     let mut items: Vec<_> = dataset.features.iter()
         .map(|y| x.iter()

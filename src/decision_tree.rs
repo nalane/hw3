@@ -64,7 +64,7 @@ impl<'a> DecisionTree<'a> {
     }
 
     // Given a feature vector, what is its label?
-    pub fn predict(&self, x: &Vec<f64>) -> &str {
+    pub fn predict(&self, x: &[f64]) -> &str {
         // Case where tree is a leaf; emit the associated class
         if let Some(c) = self.class {
             self.dataset.label_mapping.get(&c).unwrap().as_str()
@@ -111,7 +111,7 @@ impl<'a> DecisionTree<'a> {
 }
 
 // Given a dataset and some parameters, build a decision tree
-pub fn decision_tree<'a>(dataset: &'a Dataset, active_rows: &Vec<usize>, eta: usize, pi: f64) -> DecisionTree<'a> {
+pub fn decision_tree<'a>(dataset: &'a Dataset, active_rows: &[usize], eta: usize, pi: f64) -> DecisionTree<'a> {
     let active_rows = active_rows.iter().cloned().collect();
     let mut tree = DecisionTree::new(dataset, active_rows);
     decision_tree_worker(&mut tree, eta, pi);

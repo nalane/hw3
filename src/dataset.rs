@@ -23,7 +23,7 @@ impl Dataset {
     }
 
     // Generate train/test indices for k-fold cross validation
-    pub fn kfold<'a>(&'a self, k: usize, fold_num: usize) -> (Vec<usize>, Vec<usize>) {
+    pub fn kfold(&self, k: usize, fold_num: usize) -> (Vec<usize>, Vec<usize>) {
         let mut train = Vec::new();
         let mut test = Vec::new();
 
