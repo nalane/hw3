@@ -20,6 +20,21 @@ impl Dataset {
             label_mapping
         }
     }
+
+    pub fn kfold<'a>(&'a self, k: usize, fold_num: usize) -> (Vec<usize>, Vec<usize>) {
+        let mut train = Vec::new();
+        let mut test = Vec::new();
+
+        for i in 0..self.labels.len() {
+            if i % k == fold_num {
+                test.push(i);
+            } else {
+                train.push(i);
+            }
+        }
+
+        (train, test)
+    }
 }
 
 // Reads in the compressed data file
@@ -60,7 +75,7 @@ pub fn read_dataset(features_file: &str, labels_file: &str) -> Result<Dataset, B
     let labels = raw_labels.split_whitespace()
         .skip(1)
         .map(|x| {
-            let label = x.split(',').skip(1).next()?;
+            let label = x.split(',').nth(1)?;
             if label_mapping.get(label) == None {
                 let num = label_mapping.len();
                 label_mapping.insert(label.to_string(), num);

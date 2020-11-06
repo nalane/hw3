@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::cmp::Ordering;
+use rayon::prelude::*;
 
 use crate::dataset::Dataset;
 
@@ -41,7 +42,7 @@ impl<'a> DecisionTree<'a> {
             }
             
             if let Some(x) = class_count.get_mut(&class) {
-                *x = *x + 1;
+                *x += 1;
             }
         }
 
@@ -61,43 +62,72 @@ impl<'a> DecisionTree<'a> {
         
         num_max_class as f64 / self.active_rows.len() as f64
     }
+
+    pub fn predict(&self, x: &Vec<f64>) -> &str {
+        if let Some(c) = self.class {
+            self.dataset.label_mapping.get(&c).unwrap().as_str()
+        } else {
+            let (dim, val) = self.split.unwrap();
+            if x[dim] < val {
+                self.y_tree.as_ref().unwrap().predict(x)
+            } else {
+                self.n_tree.as_ref().unwrap().predict(x)
+            }
+        }
+    }
+
+    pub fn print(&self) {
+        self.print_worker(0);
+    }
+
+    fn print_worker(&self, levels: usize) {
+        if let Some(class) = self.class {
+            for _ in 0..levels {
+                print!("\t");
+            }
+            println!("Class: {}", self.dataset.label_mapping.get(&class).unwrap());
+        }
+
+        else {
+            let (split_dim, split_val) = self.split.unwrap();
+            for _ in 0..levels {
+                print!("\t");
+            }
+            println!("Split on dimension {}, vals < {}", split_dim, split_val);
+
+            self.y_tree.as_ref().unwrap().print_worker(levels + 1);
+            self.n_tree.as_ref().unwrap().print_worker(levels + 1);
+        }
+    }
 }
 
 // Given a dataset and some parameters, build a decision tree
-pub fn decision_tree<'a>(dataset: &'a Dataset, eta: usize, pi: f64) -> DecisionTree<'a> {
-    let active_rows = (0..dataset.labels.len()).collect();
+pub fn decision_tree<'a>(dataset: &'a Dataset, active_rows: &Vec<usize>, eta: usize, pi: f64) -> DecisionTree<'a> {
+    let active_rows = active_rows.iter().cloned().collect();
     let mut tree = DecisionTree::new(dataset, active_rows);
-    decision_tree_worker(&mut tree, eta, pi, 0);
+    decision_tree_worker(&mut tree, eta, pi);
     tree
 }
 
 // Given a decision tree node, populate that branch of the tree
-fn decision_tree_worker<'a>(node: &'a mut DecisionTree, eta: usize, pi: f64, levels: usize) {
+fn decision_tree_worker(node: &mut DecisionTree, eta: usize, pi: f64) {
     // See if this node is a leaf
     if node.active_rows.len() <= eta || node.purity() >= pi {
         let class = node.majority_class();
-        for _ in 0..levels {
-            print!("\t");
-        }
-        println!("Class: {}", node.dataset.label_mapping.get(&class).unwrap());
         
         node.class = Some(class);
         return;
     }
 
     // Find the best split across all dimensions
-    let mut max_score = 0.0;
-    let mut split_dim = 0;
-    let mut split_val = -1.0;
-    for dim in 0..node.dataset.features[0].len() {
-        // Note that this particular dataset only has numeric data
-        let (split, score) = evaluate_numeric(node, dim);
-        if score > max_score {
-            split_dim = dim;
-            split_val = split;
-            max_score = score;
-        }
-    }
+    let (split_dim, split_val, _) = (0..node.dataset.features[0].len())
+        .into_par_iter()
+        .filter_map(|dim| {
+            let (val, score) = evaluate_numeric(node, dim)?;
+            Some((dim, val, score))
+        })
+        .max_by(|(_, _, x), (_, _, y)| x.partial_cmp(y).unwrap_or(Ordering::Equal))
+        .unwrap();
 
     // Figure out which items satisfy the split, and which don't
     let mut y_rows = BTreeSet::new();
@@ -112,16 +142,11 @@ fn decision_tree_worker<'a>(node: &'a mut DecisionTree, eta: usize, pi: f64, lev
         }
     }
 
-    for _ in 0..levels {
-        print!("\t");
-    }
-    println!("Split on dimension {}, vals < {}", split_dim, split_val);
-
     // Create the trees for the two subsets and recurse
     let mut y_tree = DecisionTree::new(node.dataset, y_rows);
     let mut n_tree = DecisionTree::new(node.dataset, n_rows);
-    decision_tree_worker(&mut y_tree, eta, pi, levels + 1);
-    decision_tree_worker(&mut n_tree, eta, pi, levels + 1);
+    decision_tree_worker(&mut y_tree, eta, pi);
+    decision_tree_worker(&mut n_tree, eta, pi);
 
     // Update this node with the new children and the split
     node.split = Some((split_dim, split_val));
@@ -130,7 +155,7 @@ fn decision_tree_worker<'a>(node: &'a mut DecisionTree, eta: usize, pi: f64, lev
 }
 
 // Given a dimension, find the best split
-fn evaluate_numeric<'a>(node: &'a DecisionTree, dim: usize) -> (f64, f64) {
+fn evaluate_numeric(node: &DecisionTree, dim: usize) -> Option<(f64, f64)> {
     // Sort the entries by the given column
     let mut vals: Vec<_> = node.active_rows.iter()
         .map(|&r| (node.dataset.features[r][dim], node.dataset.labels[r]))
@@ -146,81 +171,78 @@ fn evaluate_numeric<'a>(node: &'a DecisionTree, dim: usize) -> (f64, f64) {
     for j in 0..labels.len() - 1 {
         counts[labels[j]] += 1;
 
-        if features[j + 1] != features[j] {
+        if (features[j + 1] - features[j]).abs() > f64::EPSILON {
             let midpoint = features[j] + (features[j + 1] - features[j]) / 2.0;
             midpoints.push(midpoint);
             nvis.push(counts.clone());
         }
     }
+    counts[labels[labels.len() - 1]] += 1;
 
     // If no midpoint could be found, then the dimension
     // has all the same numbers and there is no split
     if midpoints.is_empty() {
-        return (-1.0, -1.0);
+        return None;
     }
 
     // Identify the best split
-    counts[labels[labels.len() - 1]] += 1;
-    let mut best_split = 0;
-    let mut best_score = 0.0;
-    for mid_idx in 0..midpoints.len() {
-        let midpoint = midpoints[mid_idx];
-
-        // Find the incidence rate of each label in both splits
-        let mut y_probs = vec![0.0; k];
-        let mut n_probs = vec![0.0; k];
-        for i in 0..k {
-            let y_denom: i64 = nvis[mid_idx].iter().sum();
-            y_probs[i] = nvis[mid_idx][i] as f64 / y_denom as f64;
+    let (best_split, best_score) = midpoints.iter()
+        .enumerate()
+        .map(|(mid_idx, &midpoint)| {
+            // Find the incidence rate of each label in both splits
+            let mut y_probs = vec![0.0; k];
+            let mut n_probs = vec![0.0; k];
+            for i in 0..k {
+                let y_denom: i64 = nvis[mid_idx].iter().sum();
+                y_probs[i] = nvis[mid_idx][i] as f64 / y_denom as f64;
             
-            let n_denom: i64 = (0..k)
-                .map(|j| counts[j] - nvis[mid_idx][j])
-                .sum();
-            n_probs[i] = (counts[i] - nvis[mid_idx][i]) as f64 / n_denom as f64;
-        }
+                let n_denom: i64 = (0..k)
+                    .map(|j| counts[j] - nvis[mid_idx][j])
+                    .sum();
+                n_probs[i] = (counts[i] - nvis[mid_idx][i]) as f64 / n_denom as f64;
+            }
 
-        // Calculate the entropy of the whole dataset
-        let full_entropy: f64 = (0..k)
-            .map(|class| {
-                let num_class = labels.iter()
-                    .filter(|&c| *c == class)
-                    .count();
-                let p = num_class as f64 / labels.len() as f64;
+            // Calculate the entropy of the whole dataset
+            let full_entropy: f64 = (0..k)
+                .map(|class| {
+                    let num_class = labels.iter()
+                        .filter(|&c| *c == class)
+                        .count();
+                    let p = num_class as f64 / labels.len() as f64;
+                    if p == 0.0 {
+                        0.0
+                    } else {
+                        -p * p.log2()
+                    }
+                })
+                .sum();
+
+            // Calculate the entropy of the elements that satisfy the split
+            let num_y = features.iter().take_while(|v| **v < midpoint).count();
+            let y_entropy: f64 = y_probs.iter().map(|&p: &f64| {
                 if p == 0.0 {
                     0.0
                 } else {
                     -p * p.log2()
                 }
-            })
-            .sum();
+            }).sum::<f64>() * num_y as f64 / labels.len() as f64;
 
-        // Calculate the entropy of the elements that satisfy the split
-        let num_y = features.iter().take_while(|v| **v < midpoint).count();
-        let y_entropy: f64 = y_probs.iter().map(|&p: &f64| {
-            if p == 0.0 {
-                0.0
-            } else {
-                -p * p.log2()
-            }
-        }).sum::<f64>() * num_y as f64 / labels.len() as f64;
+            // Calculate the entropy for the elements that don't
+            let num_n = labels.len() - num_y;
+            let n_entropy: f64 = n_probs.iter().map(|&p: &f64| {
+                if p == 0.0 {
+                    0.0
+                } else {
+                    -p * p.log2()
+                }
+            }).sum::<f64>() * num_n as f64 / labels.len() as f64;
 
-        // Calculate the entropy for the elements that don't
-        let num_n = labels.len() - num_y;
-        let n_entropy: f64 = n_probs.iter().map(|&p: &f64| {
-            if p == 0.0 {
-                0.0
-            } else {
-                -p * p.log2()
-            }
-        }).sum::<f64>() * num_n as f64 / labels.len() as f64;
+            // Calculate gain and see how it compares to the best score
+            let gain = full_entropy - y_entropy - n_entropy;
+            (midpoint, gain)
+        })
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Greater))
+        .unwrap();
 
-        // Calculate gain and see how it compares to the best score
-        let gain = full_entropy - y_entropy - n_entropy;
-        if gain > best_score {
-            best_score = gain;
-            best_split = mid_idx;
-        }
-    }
-
-    (midpoints[best_split], best_score)
+    Some((best_split, best_score))
 }
